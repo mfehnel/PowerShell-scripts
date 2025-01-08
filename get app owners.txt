@@ -1,0 +1,34 @@
+﻿
+#Connect to Microsoft Graph
+Connect-MgGraph -Scopes Application.Read.All
+
+#Get all applications
+$AllApps = Get-MgApplication -All 
+
+#Initialise array 
+$Report = @()
+
+#Send batch requests to get application owners
+for($i=0;$i -lt $AllApps.count;$i+=20){
+    $batch = @{}
+    $batch['requests'] = ($AllApps[$i..($i+19)] | select @{n='id';e={$_.id}},@{n='method';e={'GET'}},`
+		@{n='url';e={"/applications/$($_.id)/owners"}})
+    $response = invoke-mggraphrequest -Method POST -URI "https://graph.microsoft.com/v1.0/`$batch" -body ($batch | convertto-json) -OutputType PSObject -ResponseHeadersVariable string
+    $Report += $response.responses
+}
+
+#Create a new array list
+$owners = [System.Collections.Generic.List[Object]]::new()
+
+#Loop through locally caches items and add to array list
+Foreach ($app in $report) {
+     $owner = $app.body.value.userprincipalname -join ", "
+     $obj = [PSCustomObject][ordered]@{
+        "Application" = ($allapps | Where {$_.id -eq $app.id} | Select DisplayName).displayname
+        "Owners" = $owner
+    }
+    $owners.Add($obj)
+}
+
+#Export to CSV
+$owners | Export-CSV -Path C:\temp\Appowners5.csv -NoTypeInformation
